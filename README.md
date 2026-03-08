@@ -2,24 +2,76 @@
 
 C# 없이 PowerShell만으로 WPF GUI 앱을 만드는 선언형 스캐폴드입니다.
 
-UI는 XAML로 트레이와 타이머는 XML로 선언하고 로직은 `actions/` 폴더에 분리해 작성합니다.
-`main.ps1`은 최초 실행 시 누락된 핸들러 파일을 자동으로 생성합니다.
+UI는 XAML로, 트레이와 타이머는 XML로 선언하고, 로직은 `logic/` 폴더에 언어 무관하게 분리합니다.
+`main.ps1` 실행 시 누락된 핸들러 파일을 자동으로 생성합니다.
 
 ## 프로젝트 구조
 
 ```
-main.ps1                        엔진 — 수정 불필요
+main.ps1                        앱 진입점 — XAML 로드, 이벤트 연결, 큐 초기화
 main.xaml                       WPF UI 레이아웃
 tray.xml                        트레이 아이콘 및 컨텍스트 메뉴 정의
 timers.xml                      DispatcherTimer 정의
+engine/
+    Ensure-ActionLoaded.ps1     핸들러 자동 스캐폴딩
+    Initialize-Queue.ps1        ConcurrentQueue + 드레인 타이머 (백그라운드 스트림 처리)
+    Invoke-UICommands.ps1       UI 명령 디스패처 (set, show, hide, enable, disable)
+    Start-LogicStream.ps1       Runspace 기반 비동기 서브프로세스 실행
 actions/
     Initialize-Tray.ps1         tray.xml 파싱 및 트레이 초기화
     Initialize-Timers.ps1       timers.xml 파싱 및 타이머 초기화
     Show-Window.ps1             트레이 메뉴: 창 표시
     Stop-App.ps1                트레이 메뉴: 앱 종료
-    Update-Clock.ps1            타이머 틱: 시계 레이블 갱신
-    Invoke-HelloClick.ps1       버튼 클릭 핸들러
+    Update-Clock.ps1            타이머 틱: 시계 갱신 (logic/clock.ps1 호출)
+    Invoke-HelloClick.ps1       버튼 클릭 핸들러 (logic/hello.py 호출)
+    Invoke-NameKeyDown.ps1      텍스트박스 Enter 키 핸들러
+logic/
+    clock.ps1                   시계 로직 (PowerShell)
+    hello.ps1                   인사 로직 (PowerShell)
+    hello.py                    인사 로직 (Python, PEP 723 인라인 메타데이터)
 ```
+
+## 아키텍처
+
+### UI ↔ 로직 분리
+
+로직 스크립트는 stdout으로 UI 명령을 출력합니다. 어떤 언어로든 작성할 수 있습니다.
+
+```
+set lblOutput.Text Hello, World!
+disable btnHello
+enable btnHello
+show lblOutput
+hide lblOutput
+```
+
+### 백그라운드 실행 (GCD 패턴)
+
+UI 스레드를 차단하지 않도록 서브프로세스를 백그라운드 Runspace에서 실행합니다.
+
+```
+[actions] → Start-LogicStream → [Runspace] → 서브프로세스 (stdout)
+                                     ↓
+                              ConcurrentQueue
+                                     ↓
+                          DispatcherTimer (16ms) → Invoke-UICommands → UI 갱신
+```
+
+- **Runspace**: 백그라운드 스레드에서 서브프로세스를 실행하고 stdout을 줄 단위로 읽음
+- **ConcurrentQueue**: 스레드 안전한 메시지 버스
+- **DispatcherTimer**: UI 스레드에서 큐를 드레인하여 컨트롤에 반영 (60fps)
+
+### 다국어 로직 지원
+
+`Start-LogicStream`이 확장자에 따라 적절한 런타임을 선택합니다:
+
+| 확장자 | 런타임 |
+|--------|--------|
+| `.ps1` | `powershell` |
+| `.py`  | `uv run` (없으면 `python -u`) |
+| `.js`  | `deno run` (없으면 `node`) |
+| `.ts`  | `deno run` |
+| `.rb`  | `ruby` |
 
 ## 스크린샷
 
@@ -40,11 +92,13 @@ powershell -ExecutionPolicy Bypass -File main.ps1
 
 ## 동작 원리
 
-1. `main.ps1`이 `main.xaml`을 파싱해 컨트롤 이름과 이벤트 핸들러 목록을 수집합니다.
-2. `actions/` 폴더에 핸들러 파일이 없으면 자동으로 스텁을 생성합니다.
-3. `actions/`의 모든 `.ps1` 파일을 dot-source로 로드합니다.
+1. `main.ps1`이 `engine/`의 유틸리티 함수를 먼저 로드합니다.
+2. `main.xaml`을 파싱해 컨트롤 이름과 이벤트 핸들러 목록을 수집합니다.
+3. `actions/` 폴더에 핸들러 파일이 없으면 자동으로 스텁을 생성합니다.
 4. XAML을 로드하고 컨트롤을 변수에 바인딩한 뒤 이벤트 핸들러를 연결합니다.
-5. `Initialize-Tray`와 `Initialize-Timers`가 각각 `tray.xml`과 `timers.xml`을 읽어 설정합니다.
+5. `Initialize-Queue`로 백그라운드 스트림 처리 큐를 시작합니다.
+6. `Initialize-Tray`와 `Initialize-Timers`가 각각 `tray.xml`과 `timers.xml`을 읽어 설정합니다.
+7. `ShowDialog()` 후 종료 시 큐, 타이머, Runspace를 정리합니다.
 
 ## 트레이 동작
 
@@ -87,3 +141,26 @@ powershell -ExecutionPolicy Bypass -File main.ps1
 
 `main.ps1`을 실행하면 `actions/Open-Settings.ps1`이 자동 생성됩니다.
 구분선은 `Header="---"`로 추가합니다.
+
+### 로직 스크립트 추가
+
+`logic/` 폴더에 아무 언어로 스크립트를 작성합니다. stdout으로 UI 명령을 출력하면 됩니다.
+
+```python
+# logic/greet.py
+import sys
+name = sys.argv[1] if len(sys.argv) > 1 else "World"
+print(f"set lblOutput.Text Hello, {name}!")
+```
+
+액션에서 `Start-LogicStream`으로 호출합니다:
+
+```powershell
+# actions/Invoke-GreetClick.ps1
+function Invoke-GreetClick {
+    param($sender, $e)
+    Start-LogicStream "$logicDir\greet.py" @($txtName.Text)
+}
+```
+
+서브프로세스는 백그라운드 Runspace에서 실행되므로 UI가 차단되지 않습니다.

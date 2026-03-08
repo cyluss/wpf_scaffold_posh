@@ -1,7 +1,8 @@
 function Start-LogicStream {
     param(
         [string]$Script,
-        [string[]]$Arguments
+        [string[]]$Arguments,
+        [int]$TimeoutMs = 30000
     )
 
     $escapedArgs = ($Arguments | ForEach-Object { "`"$_`"" }) -join ' '
@@ -51,35 +52,41 @@ function Start-LogicStream {
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
 
-    $proc = [System.Diagnostics.Process]::new()
-    $proc.StartInfo = $psi
-    $proc.EnableRaisingEvents = $true
+    $q = $script:uiQueue
 
-    $dispatcher = $window.Dispatcher
+    $runspace = [runspacefactory]::CreateRunspace()
+    $runspace.Open()
 
-    # Stream stdout line-by-line → dispatch each as a UI command
-    Register-ObjectEvent -InputObject $proc -EventName OutputDataReceived -Action {
-        $line = $Event.SourceEventArgs.Data
-        if ($line) {
-            $dispatcher.Invoke([Action]{
-                Invoke-UICommands @($line)
-            }, [System.Windows.Threading.DispatcherPriority]::Normal)
+    $shell = [powershell]::Create()
+    $shell.Runspace = $runspace
+
+    [void]$shell.AddScript({
+        param($processInfo, $queue, $timeout)
+
+        $proc = [System.Diagnostics.Process]::new()
+        $proc.StartInfo = $processInfo
+        $proc.Start() | Out-Null
+
+        # Drain stderr asynchronously to prevent pipe deadlock
+        $stderrTask = $proc.StandardError.ReadToEndAsync()
+
+        # Stream stdout line-by-line to queue
+        while ($null -ne ($line = $proc.StandardOutput.ReadLine())) {
+            if ($line) { $queue.Enqueue($line) }
         }
-    } | Out-Null
 
-    # Stream stderr → write to host for debugging
-    Register-ObjectEvent -InputObject $proc -EventName ErrorDataReceived -Action {
-        $errLine = $Event.SourceEventArgs.Data
-        if ($errLine) {
-            $dispatcher.Invoke([Action]{
-                Write-Host "Logic error: $errLine" -ForegroundColor Red
-            }, [System.Windows.Threading.DispatcherPriority]::Normal)
+        if (-not $proc.WaitForExit($timeout)) {
+            $proc.Kill()
         }
-    } | Out-Null
 
-    $proc.Start() | Out-Null
-    $proc.BeginOutputReadLine()
-    $proc.BeginErrorReadLine()
+        $proc.Dispose()
+    }).AddArgument($psi).AddArgument($q).AddArgument($TimeoutMs)
 
-    return $proc
+    $asyncResult = $shell.BeginInvoke()
+
+    $script:activeStreams.Add(@{
+        Shell    = $shell
+        Runspace = $runspace
+        Handle   = $asyncResult
+    })
 }

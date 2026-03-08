@@ -8,7 +8,8 @@
 
     <StackPanel Margin="20" VerticalAlignment="Center">
         <Label Content="Enter your name:" FontSize="14"/>
-        <TextBox x:Name="txtName" FontSize="14" Padding="5" Margin="0,0,0,10"/>
+        <TextBox x:Name="txtName" FontSize="14" Padding="5" Margin="0,0,0,10"
+                 KeyDown="Invoke-NameKeyDown"/>
         <Button x:Name="btnHello" Content="Say Hello"
                 FontSize="14" Padding="10,5" HorizontalAlignment="Left"
                 Click="Invoke-HelloClick"/>
