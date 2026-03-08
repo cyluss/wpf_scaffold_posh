@@ -1,0 +1,9 @@
+# PowerShell transcript logs
+*.log
+
+# VS Code
+.vscode/
+
+# Windows thumbnails
+Thumbs.db
+Desktop.ini

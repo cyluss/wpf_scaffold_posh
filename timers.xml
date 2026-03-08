@@ -1,0 +1,3 @@
+<Timers>
+    <Timer Name="clockTimer" Interval="1000" AutoStart="true" Tick="Update-Clock"/>
+</Timers>

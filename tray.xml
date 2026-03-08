@@ -1,0 +1,7 @@
+<Tray ToolTip="Hello WPF" BalloonMessage="Minimized to tray">
+    <ContextMenu>
+        <MenuItem Header="Show" Action="Show-Window"/>
+        <MenuItem Header="---"/>
+        <MenuItem Header="Exit" Action="Stop-App"/>
+    </ContextMenu>
+</Tray>
