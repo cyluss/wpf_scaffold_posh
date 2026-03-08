@@ -2,8 +2,83 @@
 
 C# 없이 PowerShell만으로 WPF GUI 앱을 만드는 선언형 스캐폴드입니다.
 
-UI는 XAML로, 트레이와 타이머는 XML로 선언하고, 로직은 `logic/` 폴더에 언어 무관하게 분리합니다.
+UI는 XAML로, 트레이와 타이머는 XML로 선언하고 로직은 `logic/` 폴더에 언어 무관하게 분리합니다.
 `main.ps1` 실행 시 누락된 핸들러 파일을 자동으로 생성합니다.
+
+## 실행
+
+```powershell
+powershell -ExecutionPolicy Bypass -File main.ps1
+```
+
+![윈도우](screenshot-window.png)
+
+## 적합한 용도
+
+- 개인 도구, 사내 유틸리티, 프로토타입
+- PowerShell 하나로 GUI를 빠르게 붙이고 싶을 때
+- 로직을 Python/Ruby/Node 등 다른 언어로 작성하고 싶을 때
+
+## 한계
+
+- **암시적 스코프 바인딩**: `$window`, `$logicDir`, `$btnHello` 등이 dot-source 스코프 체인으로 전파됩니다. 액션이 많아지면 변수 출처 추적이 어렵습니다.
+- **프로세스 생성 비용**: 로직 호출 시마다 외부 프로세스를 spawn합니다. 타이머 틱마다 `powershell.exe`를 실행하는 시계처럼 빈번한 호출에는 과도할 수 있습니다.
+- **디버깅 제약**: Runspace 내부에서 breakpoint를 설정할 수 없고 stderr 출력도 제한적입니다.
+- **적정 규모**: 액션 20개, 로직 10개 이상이면 C# WPF 등으로 전환을 권장합니다.
+
+## 요구 사항
+
+- Windows PowerShell 5.1 이상
+- .NET Framework (Windows 기본 포함)
+
+## 아키텍처
+
+### UI ↔ 로직 분리
+
+로직 스크립트는 stdout으로 UI 명령을 출력합니다. 어떤 언어로든 작성할 수 있습니다.
+
+```
+set lblOutput.Text Hello, World!
+disable btnHello
+enable btnHello
+show lblOutput
+hide lblOutput
+```
+
+### 백그라운드 실행
+
+iOS의 Grand Central Dispatch(GCD)와 같은 패턴입니다.
+무거운 작업을 백그라운드 스레드에서 실행하고, 결과를 메인(UI) 스레드로 마샬링합니다.
+
+| 개념 | GCD (iOS/ObjC) | 이 프로젝트 (PowerShell WPF) |
+|------|----------------|------------------------------|
+| 백그라운드 실행 | `dispatch_async(global_queue)` | Runspace + `BeginInvoke()` |
+| UI 갱신 | `dispatch_async(main_queue)` | DispatcherTimer가 큐를 드레인 |
+| 메시지 전달 | 블록 캡처 | `ConcurrentQueue<string>` |
+
+```
+[actions] → Start-LogicStream → [Runspace] → 서브프로세스 (stdout)
+                                     ↓
+                              ConcurrentQueue
+                                     ↓
+                          DispatcherTimer (16ms) → Invoke-UICommands → UI 갱신
+```
+
+- **Runspace**: 백그라운드 스레드에서 서브프로세스를 실행하고 stdout을 줄 단위로 읽음
+- **ConcurrentQueue**: 스레드 안전한 메시지 버스
+- **DispatcherTimer**: UI 스레드에서 큐를 드레인하여 컨트롤에 반영 (60fps)
+
+### 다국어 로직 지원
+
+`Start-LogicStream`이 확장자에 따라 적절한 런타임을 선택합니다:
+
+| 확장자 | 런타임 |
+|--------|--------|
+| `.ps1` | `powershell` |
+| `.py`  | `uv run` (없으면 `python -u`) |
+| `.js`  | `deno run` (없으면 `node`) |
+| `.ts`  | `deno run` |
+| `.rb`  | `ruby` |
 
 ## 프로젝트 구조
 
@@ -31,65 +106,6 @@ logic/
     hello.py                    인사 로직 (Python, PEP 723 인라인 메타데이터)
 ```
 
-## 아키텍처
-
-### UI ↔ 로직 분리
-
-로직 스크립트는 stdout으로 UI 명령을 출력합니다. 어떤 언어로든 작성할 수 있습니다.
-
-```
-set lblOutput.Text Hello, World!
-disable btnHello
-enable btnHello
-show lblOutput
-hide lblOutput
-```
-
-### 백그라운드 실행 (GCD 패턴)
-
-UI 스레드를 차단하지 않도록 서브프로세스를 백그라운드 Runspace에서 실행합니다.
-
-```
-[actions] → Start-LogicStream → [Runspace] → 서브프로세스 (stdout)
-                                     ↓
-                              ConcurrentQueue
-                                     ↓
-                          DispatcherTimer (16ms) → Invoke-UICommands → UI 갱신
-```
-
-- **Runspace**: 백그라운드 스레드에서 서브프로세스를 실행하고 stdout을 줄 단위로 읽음
-- **ConcurrentQueue**: 스레드 안전한 메시지 버스
-- **DispatcherTimer**: UI 스레드에서 큐를 드레인하여 컨트롤에 반영 (60fps)
-
-### 다국어 로직 지원
-
-`Start-LogicStream`이 확장자에 따라 적절한 런타임을 선택합니다:
-
-| 확장자 | 런타임 |
-|--------|--------|
-| `.ps1` | `powershell` |
-| `.py`  | `uv run` (없으면 `python -u`) |
-| `.js`  | `deno run` (없으면 `node`) |
-| `.ts`  | `deno run` |
-| `.rb`  | `ruby` |
-
-## 스크린샷
-
-![윈도우](screenshot-window.png)
-
-![트레이](screenshot-tray.png)
-
-## 요구 사항
-
-- Windows PowerShell 5.1 이상
-- .NET Framework (Windows 기본 포함)
-
-## 실행
-
-```powershell
-powershell -ExecutionPolicy Bypass -File main.ps1
-```
-
 ## 동작 원리
 
 1. `main.ps1`이 `engine/`의 유틸리티 함수를 먼저 로드합니다.
@@ -99,13 +115,6 @@ powershell -ExecutionPolicy Bypass -File main.ps1
 5. `Initialize-Queue`로 백그라운드 스트림 처리 큐를 시작합니다.
 6. `Initialize-Tray`와 `Initialize-Timers`가 각각 `tray.xml`과 `timers.xml`을 읽어 설정합니다.
 7. `ShowDialog()` 후 종료 시 큐, 타이머, Runspace를 정리합니다.
-
-## 트레이 동작
-
-창 닫기 버튼을 누르면 앱이 종료되지 않고 시스템 트레이로 최소화됩니다.
-트레이 아이콘은 PowerShell 기본 아이콘을 사용합니다.
-트레이 아이콘을 더블클릭하면 창이 복원됩니다.
-우클릭 메뉴는 `tray.xml`에서 선언합니다.
 
 ## 확장 방법
 
@@ -164,3 +173,14 @@ function Invoke-GreetClick {
 ```
 
 서브프로세스는 백그라운드 Runspace에서 실행되므로 UI가 차단되지 않습니다.
+
+## 트레이 동작
+
+창 닫기 버튼을 누르면 앱이 종료되지 않고 시스템 트레이로 최소화됩니다.
+트레이 아이콘은 PowerShell 기본 아이콘을 사용합니다.
+트레이 아이콘을 더블클릭하면 창이 복원됩니다.
+우클릭 메뉴는 `tray.xml`에서 선언합니다.
+
+![트레이](screenshot-tray.png)
+
+
