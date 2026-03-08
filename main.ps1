@@ -1,11 +1,27 @@
 #Requires -Version 5.1
 Add-Type -AssemblyName PresentationFramework
-Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $xamlPath    = Join-Path $PSScriptRoot "main.xaml"
 $actionsDir  = Join-Path $PSScriptRoot "actions"
+
+function Ensure-ActionLoaded {
+    param([string]$Name, [string]$Dir)
+    $file = Join-Path $Dir "$Name.ps1"
+    if (-not (Test-Path $file)) {
+        @(
+            "function $Name {"
+            "    param(`$sender, `$e)"
+            "    # TODO: implement $Name"
+            "}"
+        ) | Set-Content $file -Encoding UTF8
+        Write-Host "Scaffolded: $file"
+    }
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        . $file
+    }
+}
 
 # Known event attributes
 $eventAttribs = @(
@@ -40,16 +56,7 @@ if (-not (Test-Path $actionsDir)) {
 }
 
 foreach ($h in $handlers) {
-    $actionFile = Join-Path $actionsDir "$($h.Handler).ps1"
-    if (-not (Test-Path $actionFile)) {
-        @(
-            "function $($h.Handler) {"
-            "    param(`$sender, `$e)"
-            "    # TODO: implement $($h.Handler)"
-            "}"
-        ) | Set-Content $actionFile -Encoding UTF8
-        Write-Host "Scaffolded: $actionFile"
-    }
+    Ensure-ActionLoaded $h.Handler $actionsDir
 }
 
 # --- Runtime: dot-source all action files ---
@@ -78,10 +85,10 @@ foreach ($h in $handlers) {
 }
 
 # --- Tray: setup ---
-$tray = Initialize-Tray $window
+$tray = Initialize-Tray $window $PSScriptRoot $actionsDir
 
 # --- Timers: setup ---
-$timers = Initialize-Timers $window
+$timers = Initialize-Timers $window $PSScriptRoot $actionsDir
 
 $window.ShowDialog()
 

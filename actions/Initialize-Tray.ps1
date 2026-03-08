@@ -1,11 +1,6 @@
-# Capture script directory at dot-source time
-$script:_trayDir = $PSScriptRoot
-
 function Initialize-Tray {
-    param($window)
+    param($window, $projectRoot, $actionsDir)
 
-    $projectRoot = Split-Path $script:_trayDir -Parent
-    $actionsDir  = $script:_trayDir
     $trayXmlPath = Join-Path $projectRoot "tray.xml"
 
     # --- Parse tray.xml ---
@@ -37,22 +32,7 @@ function Initialize-Tray {
         $ctxMenu.Items.Add($menuItem) | Out-Null
 
         if ($action) {
-            # Scaffold stub if missing
-            $actionFile = Join-Path $actionsDir "$action.ps1"
-            if (-not (Test-Path $actionFile)) {
-                @(
-                    "function $action {"
-                    "    param(`$sender, `$e)"
-                    "    # TODO: implement $action"
-                    "}"
-                ) | Set-Content $actionFile -Encoding UTF8
-                Write-Host "Scaffolded: $actionFile"
-            }
-
-            # Dot-source if function not yet loaded
-            if (-not (Get-Command $action -ErrorAction SilentlyContinue)) {
-                . $actionFile
-            }
+            Ensure-ActionLoaded $action $actionsDir
 
             $fn = Get-Item "function:$action"
             $menuItem.Add_Click($fn.ScriptBlock)

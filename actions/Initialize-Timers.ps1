@@ -1,11 +1,6 @@
-# Capture script directory at dot-source time
-$script:_timersDir = $PSScriptRoot
-
 function Initialize-Timers {
-    param($window)
+    param($window, $projectRoot, $actionsDir)
 
-    $projectRoot   = Split-Path $script:_timersDir -Parent
-    $actionsDir    = $script:_timersDir
     $timersXmlPath = Join-Path $projectRoot "timers.xml"
 
     if (-not (Test-Path $timersXmlPath)) { return }
@@ -18,22 +13,7 @@ function Initialize-Timers {
         $interval = [int]$node.Interval
         $autoStart = $node.AutoStart -ne 'false'
 
-        # Scaffold stub if missing
-        $actionFile = Join-Path $actionsDir "$tickFn.ps1"
-        if (-not (Test-Path $actionFile)) {
-            @(
-                "function $tickFn {"
-                "    param(`$sender, `$e)"
-                "    # TODO: implement $tickFn"
-                "}"
-            ) | Set-Content $actionFile -Encoding UTF8
-            Write-Host "Scaffolded: $actionFile"
-        }
-
-        # Dot-source if function not yet loaded
-        if (-not (Get-Command $tickFn -ErrorAction SilentlyContinue)) {
-            . $actionFile
-        }
+        Ensure-ActionLoaded $tickFn $actionsDir
 
         $timer = [System.Windows.Threading.DispatcherTimer]::new()
         $timer.Interval = [TimeSpan]::FromMilliseconds($interval)
