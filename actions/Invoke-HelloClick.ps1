@@ -1,4 +1,5 @@
 ﻿function Invoke-HelloClick {
     param($sender, $e)
-    # TODO: implement Invoke-HelloClick
+    $name = $txtName.Text
+    Start-LogicStream "$logicDir\hello.py" @($name)
 }
