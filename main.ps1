@@ -54,17 +54,18 @@ Get-ChildItem $actionsDir -Filter "*.ps1" | ForEach-Object { . $_.FullName }
 # --- Runtime: load XAML ---
 $sanitized = (Get-Content $xamlPath -Raw) -replace 'x:Class="[^"]*"', ''
 foreach ($evt in $eventAttribs) {
-    $sanitized = $sanitized -replace "$evt=""[^""]*""", ''
+    $sanitized = $sanitized -replace "(?<=\s)$evt=""[^""]*""", ''
 }
 [xml]$xaml = $sanitized
 
 $reader = [System.Xml.XmlNodeReader]::new($xaml)
 $window = [System.Windows.Markup.XamlReader]::Load($reader)
 
-# --- Runtime: find controls ---
+# --- Runtime: find controls + entity registry ---
 foreach ($c in $controls) {
     Set-Variable -Name $c -Value $window.FindName($c)
 }
+Register-XamlControls $controls $window
 
 # --- Runtime: wire handlers ---
 foreach ($h in $handlers) {
@@ -87,9 +88,11 @@ $window.ShowDialog()
 # --- Cleanup ---
 $drainTimer.Stop()
 foreach ($t in $timers) { $t.Stop() }
+Stop-LogicStream
 foreach ($stream in $script:activeStreams) {
     if (-not $stream.Handle.IsCompleted) { $stream.Shell.Stop() }
     $stream.Shell.Dispose()
     $stream.Runspace.Dispose()
 }
+$script:activeProcesses.Clear()
 $tray.Dispose()

@@ -2,8 +2,11 @@ function Start-LogicStream {
     param(
         [string]$Script,
         [string[]]$Arguments,
-        [int]$TimeoutMs = 30000
+        [int]$TimeoutMs = 30000,
+        [string]$Tag
     )
+
+    if (-not $Tag) { $Tag = [guid]::NewGuid().ToString('N') }
 
     $escapedArgs = ($Arguments | ForEach-Object { "`"$_`"" }) -join ' '
     $ext = [System.IO.Path]::GetExtension($Script).ToLower()
@@ -53,6 +56,7 @@ function Start-LogicStream {
     $psi.CreateNoWindow = $true
 
     $q = $script:uiQueue
+    $procMap = $script:activeProcesses
 
     $runspace = [runspacefactory]::CreateRunspace()
     $runspace.Open()
@@ -61,11 +65,14 @@ function Start-LogicStream {
     $shell.Runspace = $runspace
 
     [void]$shell.AddScript({
-        param($processInfo, $queue, $timeout)
+        param($processInfo, $queue, $timeout, $processMap, $streamTag)
 
         $proc = [System.Diagnostics.Process]::new()
         $proc.StartInfo = $processInfo
         $proc.Start() | Out-Null
+
+        # Expose process handle for cancellation from UI thread
+        $processMap.TryAdd($streamTag, $proc) | Out-Null
 
         # Drain stderr asynchronously to prevent pipe deadlock
         $stderrTask = $proc.StandardError.ReadToEndAsync()
@@ -79,8 +86,10 @@ function Start-LogicStream {
             $proc.Kill()
         }
 
+        $removed = $null
+        $processMap.TryRemove($streamTag, [ref]$removed) | Out-Null
         $proc.Dispose()
-    }).AddArgument($psi).AddArgument($q).AddArgument($TimeoutMs)
+    }).AddArgument($psi).AddArgument($q).AddArgument($TimeoutMs).AddArgument($procMap).AddArgument($Tag)
 
     $asyncResult = $shell.BeginInvoke()
 
@@ -88,5 +97,8 @@ function Start-LogicStream {
         Shell    = $shell
         Runspace = $runspace
         Handle   = $asyncResult
+        Tag      = $Tag
     })
+
+    return $Tag
 }

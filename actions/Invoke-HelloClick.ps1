@@ -1,6 +1,7 @@
-﻿function Invoke-HelloClick {
+function Invoke-HelloClick {
     param($sender, $e)
     $btnHello.IsEnabled = $false
+    $btnCancel.IsEnabled = $true
     $name = $txtName.Text
-    Start-LogicStream "$logicDir\hello.py" @($name)
+    $script:helloStreamTag = Start-LogicStream "$logicDir\hello.py" @($name)
 }

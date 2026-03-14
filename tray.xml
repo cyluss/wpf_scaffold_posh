@@ -1,4 +1,4 @@
-<Tray ToolTip="Hello WPF" BalloonMessage="Minimized to tray">
+<Tray ToolTip="HTTP Client" BalloonMessage="Minimized to tray">
     <ContextMenu>
         <MenuItem Header="Show" Action="Show-Window"/>
         <MenuItem Header="---"/>
