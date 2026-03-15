@@ -69,7 +69,11 @@ Register-XamlControls $controls $window
 
 # --- Runtime: wire handlers ---
 foreach ($h in $handlers) {
-    $control = Get-Variable -Name $h.Control -ValueOnly
+    if ($h.Control) {
+        $control = Get-Variable -Name $h.Control -ValueOnly
+    } else {
+        $control = $window
+    }
     $fn = Get-Item "function:$($h.Handler)"
     $control."Add_$($h.Event)"($fn.ScriptBlock)
 }

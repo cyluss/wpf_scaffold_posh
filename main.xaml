@@ -3,7 +3,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="HTTP Client"
     Width="820" Height="650"
-    WindowStartupLocation="CenterScreen">
+    WindowStartupLocation="CenterScreen"
+    Loaded="Initialize-Wsl">
 
     <DockPanel Margin="10">
 
@@ -30,7 +31,7 @@
                      KeyDown="Invoke-UrlKeyDown"/>
         </DockPanel>
 
-        <!-- Row 2: TLS Verify + Body Type -->
+        <!-- Row 2: TLS Verify + Body Type + WSL -->
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
             <CheckBox x:Name="chkTls" Content="TLS Verify" FontSize="13"
                       IsChecked="True" VerticalAlignment="Center" Margin="0,0,16,0"/>
@@ -41,6 +42,9 @@
                 <ComboBoxItem Content="Form"/>
                 <ComboBoxItem Content="Text"/>
             </ComboBox>
+            <Button x:Name="btnWsl" Content="WSL SysInfo" FontSize="13" Padding="12,4"
+                    Margin="16,0,0,0"
+                    Click="Invoke-WslClick"/>
         </StackPanel>
 
         <!-- Row 3: Headers label + textbox -->

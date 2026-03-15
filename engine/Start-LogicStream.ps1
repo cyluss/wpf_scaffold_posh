@@ -44,6 +44,14 @@ function Start-LogicStream {
             $psi.FileName  = "ruby"
             $psi.Arguments = "`"$Script`" $escapedArgs"
         }
+        '.sh' {
+            $distro = if ($env:WSL_DISTRO) { $env:WSL_DISTRO } else { "Rocky9" }
+            $wslPath = ($Script -replace '\\', '/')
+            $wslPath = [regex]::Replace($wslPath, '^([A-Za-z]):', { "/mnt/$($args[0].Groups[1].Value.ToLower())" })
+            $psi.FileName  = "wsl"
+            $psi.Arguments = "-d $distro -- bash `"$wslPath`" $escapedArgs"
+            $psi.RedirectStandardInput = $true
+        }
         default {
             $psi.FileName  = $Script
             $psi.Arguments = $escapedArgs
@@ -70,6 +78,11 @@ function Start-LogicStream {
         $proc = [System.Diagnostics.Process]::new()
         $proc.StartInfo = $processInfo
         $proc.Start() | Out-Null
+
+        # Close stdin immediately to prevent WSL pipe hang (WSL#4424)
+        if ($processInfo.RedirectStandardInput) {
+            $proc.StandardInput.Close()
+        }
 
         # Expose process handle for cancellation from UI thread
         $processMap.TryAdd($streamTag, $proc) | Out-Null
