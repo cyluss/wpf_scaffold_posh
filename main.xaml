@@ -45,6 +45,9 @@
             <Button x:Name="btnWsl" Content="WSL SysInfo" FontSize="13" Padding="12,4"
                     Margin="16,0,0,0"
                     Click="Invoke-WslClick"/>
+            <Button x:Name="btnNumpy" Content="NumPy Demo" FontSize="13" Padding="12,4"
+                    Margin="6,0,0,0"
+                    Click="Invoke-NumpyClick"/>
         </StackPanel>
 
         <!-- Row 3: Headers label + textbox -->
